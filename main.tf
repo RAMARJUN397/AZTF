@@ -1,37 +1,150 @@
 terraform {
-  backend "azurerm" {
-    resource_group_name  = "tamopstfstates"
-    storage_account_name = "tfstatedevops"
-    container_name       = "terraformgithubexample"
-    key                  = "terraformgithubexample.tfstate"
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "2.84.0"
+    }
   }
 }
- 
+
+
+# Configure the Microsoft Azure Provider
 provider "azurerm" {
-  version = "~>2.0"
   features {}
 }
- 
-data "azurerm_client_config" "current" {}
- 
-#Create Resource Group
-resource "azurerm_resource_group" "tamops" {
-  name     = "tamops"
+# Create a resource group
+resource "azurerm_resource_group" "TResource" {
+  name     = "Terraform_Resource"
   location = "East US"
+  tags = {
+    environment = "TerraformDemo" 
+  }
 }
- 
-#Create Virtual Network
-resource "azurerm_virtual_network" "vnet" {
-  name                = "tamops-vnet"
-  address_space       = ["192.168.0.0/16"]
+
+# Create a virtual network within the resource group
+resource "azurerm_virtual_network" "TNetwork" {
+  name                = "myvnet"
+  resource_group_name = azurerm_resource_group.TResource.name
   location            = "East US"
-  resource_group_name = azurerm_resource_group.tamops.name
+  address_space       = ["10.0.0.0/16"]
+  tags = {
+    environment = "TerraformDemo" 
+  }
 }
- 
-# Create Subnet
-resource "azurerm_subnet" "subnet" {
-  name                 = "subnet"
-  resource_group_name  = azurerm_resource_group.tamops.name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefix       = "192.168.0.0/24"
+
+#Create SubNet
+resource "azurerm_subnet" "terraformsubnet" {
+  name                 = "myvnsubnet"
+  resource_group_name  = azurerm_resource_group.TResource.name
+  virtual_network_name = azurerm_virtual_network.TNetwork.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
+
+#Create Public Ip 
+resource "azurerm_public_ip" "mypublic_Ip" {
+  name                = "tpublicip"
+  resource_group_name = azurerm_resource_group.TResource.name
+  location            = "East US"
+  allocation_method   = "Static"
+
+  tags = {
+    environment = "TerraformDemo" 
+  }
+}
+
+#Create Network Security Group
+resource "azurerm_network_security_group" "TFNGroup" {
+  name                = "TFSecurityGroup1"
+  location            = "East US"
+  resource_group_name = azurerm_resource_group.TResource.name
+
+  security_rule {
+    name                       = "SSH"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  tags = {
+    environment = "TerraformDemo" 
+  }
+}
+
+#Create network Interface 
+resource "azurerm_network_interface" "TFNetworkInter" {
+  name                = "TFnic"
+  location            = "East US"
+  resource_group_name = azurerm_resource_group.TResource.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.terraformsubnet.id
+    private_ip_address_allocation = "Dynamic"
+     public_ip_address_id = azurerm_public_ip.mypublic_Ip.id
+  }
+   tags = {
+    environment = "TerraformDemo" 
+  }
+}
+
+#Create a NSGA
+resource "azurerm_subnet_network_security_group_association" "azsnsga" {
+  #network_interface_id      = azurerm_network_interface.TFNetworkInter.id
+  subnet_id                 =azurerm_subnet.terraformsubnet.id
+  network_security_group_id = azurerm_network_security_group.TFNGroup.id
+}
+
+#Create Random Id
+resource "random_id" "randomid"{
+  keepers = {
+    resource_group_name = azurerm_resource_group.TResource.name
+  }
+  byte_length = 8
+}
+
+#Create Storage account
+resource "azurerm_storage_account" "azstorage" {
+  name                     = "tfaccountname"
+  resource_group_name      = azurerm_resource_group.TResource.name
+  location                 = "East US"
+  account_tier             = "Standard"
+  account_replication_type = "GRS"
+
+  tags = {
+    environment = "TerraformDemo" 
+  }
+}
+#Create Vms
+resource "azurerm_linux_virtual_machine" "Terraform_Console" {
+  name                = "myvm"
+  resource_group_name = azurerm_resource_group.TResource.name
+  network_interface_ids = [azurerm_network_interface.TFNetworkInter.id]
+  location            = "East US"
+  size                = "Standard_F2"
+  os_disk {
+     name                = "myoses"
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "UbuntuServer"
+    sku       = "18.04-LTS"
+    version   = "latest"
+  }
+  computer_name = "ubuntu"
+  admin_username      = "adminuser"
+  #disable_password_authentification = false
+  admin_password      = "P@$$w0rd1234!"
+  boot_diagnostics{
+    storage_account_uri = azurerm_storage_account.azstorage.primary_blob_endpoint 
+  }
+   tags = {
+    environment = "TerraformDemo" 
+  }
 }
