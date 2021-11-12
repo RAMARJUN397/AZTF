@@ -13,3 +13,7 @@ provider "azurerm" {
   features {}
 }
 
+resource "azurerm_resource_group" "TFRSEDF" {
+  name     = "example"
+  location = "East Us"
+}
