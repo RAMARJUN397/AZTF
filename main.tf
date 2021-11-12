@@ -25,10 +25,4 @@ resource "azurerm_virtual_network" "vnet" {
   location            = "eastus2"
   resource_group_name = "tfremod"
 }
- 
-# Create Subnet
-resource "azurerm_subnet" "subnet" {
-  name                 = "subnet"
-  resource_group_name  = "tfremod"
-  virtual_network_name = "tampos-vnet"
-  address_prefix       = "192.168.0.0/24"
+
